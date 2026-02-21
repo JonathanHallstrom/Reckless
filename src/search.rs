@@ -802,7 +802,8 @@ fn search<NODE: NodeType>(
             }
 
             if td.stack[ply + 1].cutoff_count > 2 {
-                reduction += 1604;
+                reduction += 1304;
+                reduction += (td.stack[ply + 1].cutoff_count * 64).min(512);
             }
 
             if is_valid(tt_score) && tt_score < alpha {
