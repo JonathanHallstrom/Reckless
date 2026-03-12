@@ -202,9 +202,9 @@ impl MovePicker {
 
         let defences = all_attacks(&td.board, side);
 
-        let undefended = !defences;
+        let threatened_undefended = td.board.all_threats() & !defences;
 
-        let in_danger = threatened_by_lesser | undefended;
+        let in_danger = threatened_by_lesser | threatened_undefended;
 
         for entry in self.list.iter_mut() {
             let mv = entry.mv;
