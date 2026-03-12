@@ -1,7 +1,8 @@
 use crate::{
+    lookup::all_attacks,
     search::NodeType,
     thread::ThreadData,
-    types::{ArrayVec, MAX_MOVES, Move, MoveList, PieceType},
+    types::{ArrayVec, Color, MAX_MOVES, Move, MoveList, PieceType},
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, PartialOrd)]
@@ -194,10 +195,16 @@ impl MovePicker {
 
         let rook_threats = minor_threats | td.board.piece_threats(PieceType::Rook);
 
-        let threatened = (td.board.our(PieceType::Queen) & rook_threats)
+        let threatened_by_lesser = (td.board.our(PieceType::Queen) & rook_threats)
             | (td.board.our(PieceType::Rook) & minor_threats)
             | (td.board.our(PieceType::Knight) & pawn_threats)
             | (td.board.our(PieceType::Bishop) & pawn_threats);
+
+        let defences = all_attacks(&td.board, side);
+
+        let undefended = !defences;
+
+        let in_danger = threatened_by_lesser | undefended;
 
         for entry in self.list.iter_mut() {
             let mv = entry.mv;
@@ -210,7 +217,7 @@ impl MovePicker {
                 + td.conthist(ply, 6, mv);
 
             // bonus for escaping capture
-            if threatened.contains(mv.from()) {
+            if in_danger.contains(mv.from()) {
                 if pt == PieceType::Queen {
                     entry.score += 20000;
                 } else if pt == PieceType::Rook {
