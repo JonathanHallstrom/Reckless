@@ -81,7 +81,7 @@ impl Board {
         // To mitigate Graph History Interaction (GHI) problems, the hash key is changed
         // every 8 plies to distinguish between positions that would otherwise appear
         // identical to the transposition table.
-        self.state.key
+        self.state.key ^ self.halfmove_hash()
     }
 
     pub const fn pawn_key(&self) -> u64 {
