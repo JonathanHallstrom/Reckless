@@ -250,15 +250,17 @@ impl Board {
             return false;
         }
 
-        if self.occupancies() == self.pieces2(PieceType::King, PieceType::Bishop) {
-            let bishops = self.pieces(PieceType::Bishop);
-            let light_bishops = bishops & Bitboard::LIGHT_SQUARES;
+        let occ = self.occupancies();
+        let bishops = self.pieces(PieceType::Bishop);
+        let light_bishops = bishops & Bitboard::LIGHT_SQUARES;
+        let dark_bishops = bishops & !Bitboard::LIGHT_SQUARES;
+        let kings = self.pieces(PieceType::King);
 
-            return (bishops == light_bishops) | (light_bishops.is_empty());
-        }
+        // only bishops remain and all the bishops are on light squares or all on dark squares
+        let bishop_draw = (occ == (bishops | kings)) & ((bishops == light_bishops) | (bishops == dark_bishops));
 
         let piece_count = self.occupancies().popcount();
-        return piece_count < 4;
+        return bishop_draw | (piece_count < 4);
     }
 
     /// Checks if the position has repeated once earlier but strictly
