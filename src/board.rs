@@ -261,10 +261,6 @@ impl Board {
             return true;
         }
 
-        if self.pieces(PieceType::Knight) != Bitboard(0) {
-            return false;
-        }
-
         (self.pieces(PieceType::Bishop) & Bitboard::LIGHT_SQUARES).popcount() != 1
     }
 
