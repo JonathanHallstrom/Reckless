@@ -246,22 +246,19 @@ impl Board {
 
     /// Checks for a material draw
     pub fn draw_by_material(&self) -> bool {
-        if (self.pieces(PieceType::Pawn) | self.pieces(PieceType::Rook) | self.pieces(PieceType::Queen)) != Bitboard(0)
-        {
+        if !(self.pieces(PieceType::Pawn) | self.pieces(PieceType::Rook) | self.pieces(PieceType::Queen)).is_empty() {
             return false;
         }
 
+        if self.occupancies() == self.pieces2(PieceType::King, PieceType::Bishop) {
+            let bishops = self.pieces(PieceType::Bishop);
+            let light_bishops = bishops & Bitboard::LIGHT_SQUARES;
+
+            return (bishops == light_bishops) | (light_bishops.is_empty());
+        }
+
         let piece_count = self.occupancies().popcount();
-        if piece_count != 4 {
-            return piece_count < 4;
-        }
-
-        // Here on, there are exactly 2 non-king minors
-        if (self.our(PieceType::Bishop) | self.our(PieceType::Knight)).popcount() == 1 {
-            return true;
-        }
-
-        (self.pieces(PieceType::Bishop) & Bitboard::LIGHT_SQUARES).popcount() != 1
+        return piece_count < 4;
     }
 
     /// Checks if the position has repeated once earlier but strictly
