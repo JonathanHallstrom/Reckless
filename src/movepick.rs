@@ -24,19 +24,92 @@ pub struct MovePicker {
     bad_noisy_idx: usize,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct PackedIndexScore {
-    data: i64,
+#[cfg(target_feature = "avx512f")]
+fn best_index(scores: &[i32]) -> usize {
+    unsafe {
+        use std::arch::x86_64::*;
+        let len = scores.len();
+        let ptr = scores.as_ptr();
+
+        let load = |i: usize| _mm512_loadu_si512(ptr.add(i).cast());
+        let pack = |scores: __m512i, indices: __m512i| _mm512_or_epi32(indices, _mm512_slli_epi32::<8>(scores));
+
+        let mut i = 0;
+        let mut indices = _mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+        let mut best_vec = _mm512_set1_epi32(i32::MIN);
+
+        while std::hint::black_box(i) + 16 <= len {
+            let cur = pack(load(i), indices);
+
+            best_vec = _mm512_max_epi32(best_vec, cur);
+
+            i += 16;
+            indices = _mm512_add_epi32(indices, _mm512_set1_epi32(16));
+        }
+
+        let cur = pack(load(i), indices);
+
+        let valid = _mm512_cmplt_epi32_mask(indices, _mm512_set1_epi32(len as i32));
+        best_vec = _mm512_mask_max_epi32(best_vec, valid, best_vec, cur);
+
+        (_mm512_reduce_max_epi32(best_vec) & 0xff) as usize
+    }
 }
 
-impl PackedIndexScore {
-    const fn new(idx: usize, score: i32) -> Self {
-        PackedIndexScore { data: (score as i64) << 32 | idx as i64 }
-    }
+#[cfg(all(target_feature = "avx2"))]
+unsafe fn _mm256_reduce_max_epi32(v: std::arch::x86_64::__m256i) -> i32 {
+    use std::arch::x86_64::*;
+    let hi = _mm256_extracti128_si256::<1>(v);
+    let lo = _mm256_castsi256_si128(v);
+    let m = _mm_max_epi32(lo, hi);
+    let m = _mm_max_epi32(m, _mm_unpackhi_epi64(m, m));
+    let m = _mm_max_epi32(m, _mm_srli_si128::<4>(m));
+    _mm_cvtsi128_si32(m)
+}
 
-    const fn idx(self) -> usize {
-        (self.data & 0xff) as usize
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
+fn best_index(scores: &[i32]) -> usize {
+    unsafe {
+        use std::arch::x86_64::*;
+        let len = scores.len();
+        let ptr = scores.as_ptr();
+
+        let load = |i: usize| _mm256_loadu_si256(ptr.add(i).cast());
+        let pack = |s: __m256i, idx: __m256i| _mm256_or_si256(idx, _mm256_slli_epi32(s, 8));
+
+        let mut i = 0;
+        let mut indices = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+        let mut best_vec = _mm256_set1_epi32(i32::MIN);
+
+        while std::hint::black_box(i) + 8 <= len {
+            let cur = pack(load(i), indices);
+
+            best_vec = _mm256_max_epi32(best_vec, cur);
+
+            i += 8;
+            indices = _mm256_add_epi32(indices, _mm256_set1_epi32(8));
+        }
+
+        let cur = pack(load(i), indices);
+        let valid = _mm256_cmpgt_epi32(_mm256_set1_epi32(len as i32), indices);
+        let cur_valid = _mm256_blendv_epi8(_mm256_set1_epi32(i32::MIN), cur, valid);
+        best_vec = _mm256_max_epi32(best_vec, cur_valid);
+
+        (_mm256_reduce_max_epi32(best_vec) & 0xff) as usize
     }
+}
+
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2")))]
+fn best_index(scores: &[i32]) -> usize {
+    let mut best_idx = 0;
+    let mut best_score = i32::MIN;
+    for (i, &score) in scores.iter().enumerate() {
+        if score >= best_score {
+            best_idx = i;
+            best_score = score;
+        }
+    }
+    best_idx
 }
 
 impl MovePicker {
@@ -151,13 +224,8 @@ impl MovePicker {
     }
 
     fn get_best_entry(&mut self) -> MoveEntry {
-        let mut best = PackedIndexScore::new(0, i32::MIN);
-
-        for (index, &score) in self.list.scores().iter().enumerate() {
-            best = best.max(PackedIndexScore::new(index, score));
-        }
-
-        self.list.remove(best.idx())
+        let index = best_index(self.list.scores());
+        self.list.remove(index)
     }
 
     fn score_noisy(&mut self, td: &ThreadData) {

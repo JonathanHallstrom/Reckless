@@ -149,10 +149,7 @@ impl MoveList {
         use std::arch::x86_64::*;
         let count = mask.count_ones() as usize;
         let compressed = _mm512_maskz_compress_epi16(mask, vector);
-        _mm_storeu_si128(
-            self.moves[self.len..].as_mut_ptr().cast(),
-            _mm512_castsi512_si128(compressed),
-        );
+        _mm_storeu_si128(self.moves[self.len..].as_mut_ptr().cast(), _mm512_castsi512_si128(compressed));
         self.len += count;
     }
 
@@ -161,10 +158,7 @@ impl MoveList {
         use std::arch::x86_64::*;
         let count = mask.count_ones() as usize;
         let compressed = _mm512_maskz_compress_epi16(mask, vector);
-        _mm256_storeu_si256(
-            self.moves[self.len..].as_mut_ptr().cast(),
-            _mm512_castsi512_si256(compressed),
-        );
+        _mm256_storeu_si256(self.moves[self.len..].as_mut_ptr().cast(), _mm512_castsi512_si256(compressed));
         self.len += count;
     }
 }
