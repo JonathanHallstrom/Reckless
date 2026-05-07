@@ -164,12 +164,12 @@ impl MovePicker {
         let threats = td.board.all_threats();
 
         let (moves, scores) = self.list.moves_and_scores_mut();
-        for (mv, score) in moves.iter().zip(scores.iter_mut()) {
+        for (&mv, score) in moves.iter().zip(scores.iter_mut()) {
             let captured = td.board.type_on(mv.capture_sq());
             let pt = td.board.type_on(mv.from());
 
             *score = 16 * captured.value()
-                + td.noisy_history.get(threats, td.board.moved_piece(*mv), mv.to(), captured)
+                + td.noisy_history.get(threats, td.board.moved_piece(mv), mv.to(), captured)
                 + 4000 * (mv.is_promotion() && mv.promo_piece_type() == PieceType::Queen) as i32
                 + (200000 - 20000 * pt as i32) * td.board.in_check() as i32;
         }
@@ -219,14 +219,14 @@ impl MovePicker {
         };
 
         let (moves, scores) = self.list.moves_and_scores_mut();
-        for (mv, score) in moves.iter().zip(scores.iter_mut()) {
+        for (&mv, score) in moves.iter().zip(scores.iter_mut()) {
             let pt = td.board.type_on(mv.from());
 
-            *score = 2048 * td.quiet_history.get(threats, side, *mv) / 1024
-                + 1536 * td.conthist(ply, 1, *mv) / 1024
-                + td.conthist(ply, 2, *mv)
-                + td.conthist(ply, 4, *mv)
-                + td.conthist(ply, 6, *mv)
+            *score = 2048 * td.quiet_history.get(threats, side, mv) / 1024
+                + 1536 * td.conthist(ply, 1, mv) / 1024
+                + td.conthist(ply, 2, mv)
+                + td.conthist(ply, 4, mv)
+                + td.conthist(ply, 6, mv)
                 + escape[pt] * threatened[pt].contains(mv.from()) as i32
                 + 9325 * td.board.checking_squares(pt).contains(mv.to()) as i32
                 - 7584 * threatened[pt].contains(mv.to()) as i32
