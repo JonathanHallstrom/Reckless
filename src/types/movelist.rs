@@ -1,33 +1,37 @@
-use std::ops::Index;
+use std::mem::MaybeUninit;
 
-use super::{ArrayVec, Bitboard, MAX_MOVES, Move, MoveKind, Square};
+use super::{Bitboard, MAX_MOVES, Move, MoveKind, Square};
 
 #[derive(Copy, Clone)]
-#[repr(C)]
 pub struct MoveEntry {
     pub mv: Move,
     pub score: i32,
 }
 
 pub struct MoveList {
-    inner: ArrayVec<MoveEntry, MAX_MOVES>,
+    moves: [MaybeUninit<Move>; MAX_MOVES],
+    scores: [MaybeUninit<i32>; MAX_MOVES],
+    len: usize,
 }
 
 impl MoveList {
     pub const fn new() -> Self {
-        Self { inner: ArrayVec::new() }
+        let moves = unsafe { MaybeUninit::uninit().assume_init() };
+        let scores = unsafe { MaybeUninit::uninit().assume_init() };
+        Self { moves, scores, len: 0 }
     }
 
     pub const fn len(&self) -> usize {
-        self.inner.len()
+        self.len
     }
 
     pub const fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+        self.len == 0
     }
 
     pub fn push(&mut self, from: Square, to: Square, kind: MoveKind) {
-        self.inner.push(MoveEntry { mv: Move::new(from, to, kind), score: 0 });
+        self.moves[self.len] = MaybeUninit::new(Move::new(from, to, kind));
+        self.len += 1;
     }
 
     #[cfg(not(target_feature = "avx512vbmi2"))]
@@ -60,8 +64,8 @@ impl MoveList {
 
                 let extra = _mm512_set1_epi16(transmute::<Move, i16>(Move::new(from, Square::new(0u8), kind)));
 
-                self.inner.splat16(to_bb.0 as u32, _mm512_or_si512(template0, extra));
-                self.inner.splat16((to_bb.0 >> 32) as u32, _mm512_or_si512(template1, extra));
+                self.splat16(to_bb.0 as u32, _mm512_or_si512(template0, extra));
+                self.splat16((to_bb.0 >> 32) as u32, _mm512_or_si512(template1, extra));
             }
         }
     }
@@ -99,8 +103,8 @@ impl MoveList {
                 let offset = offset as i16;
                 let extra = _mm512_set1_epi16(((kind as i16) << 12).wrapping_sub(offset));
 
-                self.inner.splat8(to_bb.0 as u32, _mm512_add_epi16(template0, extra));
-                self.inner.splat8((to_bb.0 >> 32) as u32, _mm512_add_epi16(template1, extra));
+                self.splat8(to_bb.0 as u32, _mm512_add_epi16(template0, extra));
+                self.splat8((to_bb.0 >> 32) as u32, _mm512_add_epi16(template1, extra));
             }
         }
     }
@@ -114,24 +118,54 @@ impl MoveList {
         }
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, MoveEntry> {
-        self.inner.iter()
+    pub fn moves(&self) -> &[Move] {
+        unsafe { std::slice::from_raw_parts(self.moves.as_ptr().cast(), self.len) }
     }
 
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, MoveEntry> {
-        self.inner.iter_mut()
+    pub fn scores(&self) -> &[i32] {
+        unsafe { std::slice::from_raw_parts(self.scores.as_ptr().cast(), self.len) }
     }
 
-    pub const fn remove(&mut self, index: usize) -> MoveEntry {
-        self.inner.swap_remove(index)
+    pub fn moves_and_scores_mut(&mut self) -> (&[Move], &mut [i32]) {
+        unsafe {
+            (
+                std::slice::from_raw_parts(self.moves.as_ptr().cast(), self.len),
+                std::slice::from_raw_parts_mut(self.scores.as_mut_ptr().cast(), self.len),
+            )
+        }
     }
-}
 
-impl Index<usize> for MoveList {
-    type Output = MoveEntry;
+    pub fn remove(&mut self, index: usize) -> MoveEntry {
+        let mv = unsafe { self.moves[index].assume_init() };
+        let score = unsafe { self.scores[index].assume_init() };
+        self.len -= 1;
+        self.moves[index] = self.moves[self.len];
+        self.scores[index] = self.scores[self.len];
+        MoveEntry { mv, score }
+    }
 
-    fn index(&self, index: usize) -> &Self::Output {
-        self.inner.get(index)
+    #[cfg(target_feature = "avx512vbmi2")]
+    unsafe fn splat8(&mut self, mask: u32, vector: std::arch::x86_64::__m512i) {
+        use std::arch::x86_64::*;
+        let count = mask.count_ones() as usize;
+        let compressed = _mm512_maskz_compress_epi16(mask, vector);
+        _mm_storeu_si128(
+            self.moves[self.len..].as_mut_ptr().cast(),
+            _mm512_castsi512_si128(compressed),
+        );
+        self.len += count;
+    }
+
+    #[cfg(target_feature = "avx512vbmi2")]
+    unsafe fn splat16(&mut self, mask: u32, vector: std::arch::x86_64::__m512i) {
+        use std::arch::x86_64::*;
+        let count = mask.count_ones() as usize;
+        let compressed = _mm512_maskz_compress_epi16(mask, vector);
+        _mm256_storeu_si256(
+            self.moves[self.len..].as_mut_ptr().cast(),
+            _mm512_castsi512_si256(compressed),
+        );
+        self.len += count;
     }
 }
 

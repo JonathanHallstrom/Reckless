@@ -20,10 +20,8 @@ pub fn perft(depth: usize, board: &mut Board) {
     let mut nodes = 0;
     let mut index = 0;
 
-    for entry in board.generate_all_moves().iter() {
+    for &mv in board.generate_all_moves().moves() {
         let now = Instant::now();
-
-        let mv = entry.mv;
 
         board.make_move(mv, &mut NullBoardObserver);
 
@@ -50,9 +48,7 @@ pub fn perft(depth: usize, board: &mut Board) {
 pub fn simple_perft(depth: usize, board: &mut Board) {
     let mut nodes = 0;
 
-    for entry in board.generate_all_moves().iter() {
-        let mv = entry.mv;
-
+    for &mv in board.generate_all_moves().moves() {
         board.make_move(mv, &mut NullBoardObserver);
 
         let count = perft_internal(&|board| board.generate_all_moves(), depth - 1, board);
@@ -69,9 +65,7 @@ pub fn simple_perft(depth: usize, board: &mut Board) {
 pub fn is_legal_perft(depth: usize, board: &mut Board) {
     let mut nodes = 0;
 
-    for entry in is_legal_movegen(board).iter() {
-        let mv = entry.mv;
-
+    for &mv in is_legal_movegen(board).moves() {
         board.make_move(mv, &mut NullBoardObserver);
 
         let count = perft_internal(&is_legal_movegen, depth - 1, board);
@@ -96,8 +90,7 @@ fn perft_internal<F: Fn(&Board) -> MoveList>(move_gen: &F, depth: usize, board: 
 
     let mut nodes = 0;
 
-    for entry in move_gen(board).iter() {
-        let mv = entry.mv;
+    for &mv in move_gen(board).moves() {
         board.make_move(mv, &mut NullBoardObserver);
         nodes += perft_internal(move_gen, depth - 1, board);
         board.undo_move(mv);

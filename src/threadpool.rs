@@ -103,7 +103,7 @@ impl ThreadPool {
 
             t1.board = (*board).clone();
             t1.root_moves =
-                t1.board.generate_all_moves().iter().map(|v| RootMove { mv: v.mv, ..Default::default() }).collect();
+                t1.board.generate_all_moves().moves().iter().map(|&mv| RootMove { mv, ..Default::default() }).collect();
 
             #[cfg(feature = "syzygy")]
             if t1.board.castling().raw() == 0 && t1.board.occupancies().popcount() <= tb::size() {
