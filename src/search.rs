@@ -663,7 +663,7 @@ fn search<NODE: NodeType>(
                     probcut_depth = base_depth;
                     score = -search::<NonPV>(td, -probcut_beta, -probcut_beta + 1, probcut_depth, false, ply + 1);
                 } else {
-                    probcut_beta = adjusted_beta;
+                    probcut_beta += (adjusted_beta - probcut_beta) / 2;
                 }
             }
 
